@@ -10,7 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -19,18 +23,18 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
-import androidx.media.VolumeProviderCompat
 
 class VolumeUnlockService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var volumeObserver: ContentObserver? = null
     private var volumeReceiver: BroadcastReceiver? = null
-    private var mediaSession: MediaSessionCompat? = null
     private var screenReceiver: BroadcastReceiver? = null
+    
+    private lateinit var audioManager: AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var silentPlayer: SilentAudioPlayer? = null
     
     private var lastWakeTime = 0L
     private var isServiceRunning = false
@@ -42,10 +46,24 @@ class VolumeUnlockService : Service() {
         const val ACTION_STOP = "ACTION_STOP"
     }
 
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                startSilence()
+            }
+            AudioManager.AUDIOFOCUS_LOSS, 
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, 
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                stopSilence()
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
     }
 
@@ -72,17 +90,22 @@ class VolumeUnlockService : Service() {
             acquire()
         }
 
-        // Setup MediaSession for when no music is playing
-        setupMediaSession()
+        // Initialize silent player
+        silentPlayer = SilentAudioPlayer()
 
-        // Register ContentObserver for volume settings (to catch changes when other music is playing)
+        // Register ContentObserver for volume settings
         registerVolumeObserver()
 
         // Register BroadcastReceiver for volume changes
         registerVolumeReceiver()
 
-        // Register BroadcastReceiver for screen states
+        // Register BroadcastReceiver for screen states to manage audio focus
         registerScreenReceiver()
+
+        // Request initial audio focus if screen is off
+        if (!pm.isInteractive) {
+            requestAudioFocus()
+        }
     }
 
     private fun stopForegroundService() {
@@ -91,7 +114,8 @@ class VolumeUnlockService : Service() {
         unregisterScreenReceiver()
         unregisterVolumeObserver()
         unregisterVolumeReceiver()
-        releaseMediaSession()
+        abandonAudioFocus()
+        stopSilence()
 
         wakeLock?.let {
             if (it.isHeld) {
@@ -104,52 +128,51 @@ class VolumeUnlockService : Service() {
         stopSelf()
     }
 
-    private fun setupMediaSession() {
+    private fun requestAudioFocus() {
         try {
-            mediaSession = MediaSessionCompat(this, "VolumeUnlockSession").apply {
-                setFlags(
-                    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or 
-                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
-                )
-
-                val state = PlaybackStateCompat.Builder()
-                    .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_PLAY_PAUSE)
-                    .setState(PlaybackStateCompat.STATE_PLAYING, 0, 1.0f)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
-                setPlaybackState(state)
+                audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(attributes)
+                    .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                    .build()
+                audioFocusRequest?.let { audioManager.requestAudioFocus(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(
+                    audioFocusChangeListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                )
+            }
+            startSilence()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
-                // Setup remote volume provider to intercept keys when no other media is active
-                val volumeProvider = object : VolumeProviderCompat(
-                    VOLUME_CONTROL_RELATIVE, 
-                    100, 
-                    50
-                ) {
-                    override fun onAdjustVolume(direction: Int) {
-                        // Intercept volume keys and change volume programmatically
-                        adjustSystemVolume(direction)
-                        handleVolumeChangeAttempt()
-                        // Reset current volume to 50 so that subsequent adjustments will be registered by the system
-                        currentVolume = 50
-                    }
-                }
-                setPlaybackToRemote(volumeProvider)
-                isActive = true
+    private fun abandonAudioFocus() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(audioFocusChangeListener)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun releaseMediaSession() {
-        mediaSession?.let {
-            try {
-                it.isActive = false
-                it.release()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        mediaSession = null
+    private fun startSilence() {
+        silentPlayer?.start()
+    }
+
+    private fun stopSilence() {
+        silentPlayer?.stop()
     }
 
     private fun registerVolumeObserver() {
@@ -199,27 +222,38 @@ class VolumeUnlockService : Service() {
         volumeReceiver = null
     }
 
-    private fun adjustSystemVolume(direction: Int) {
-        try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val adjustDir = if (direction > 0) {
-                AudioManager.ADJUST_RAISE
-            } else if (direction < 0) {
-                AudioManager.ADJUST_LOWER
-            } else {
-                0
+    private fun registerScreenReceiver() {
+        screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        // Request audio focus when screen goes off to enable volume keys
+                        requestAudioFocus()
+                    }
+                    Intent.ACTION_SCREEN_ON -> {
+                        // Release focus and stop silence when user is using the phone
+                        abandonAudioFocus()
+                        stopSilence()
+                    }
+                }
             }
-
-            if (adjustDir != 0) {
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    adjustDir,
-                    AudioManager.FLAG_SHOW_UI
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        registerReceiver(screenReceiver, filter)
+    }
+
+    private fun unregisterScreenReceiver() {
+        screenReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        screenReceiver = null
     }
 
     private fun handleVolumeChangeAttempt() {
@@ -231,7 +265,7 @@ class VolumeUnlockService : Service() {
 
     private fun triggerWake() {
         val now = System.currentTimeMillis()
-        if (now - lastWakeTime > 500) { // Debounce wakes
+        if (now - lastWakeTime > 500) {
             lastWakeTime = now
             wakeScreen()
             vibrateFeedback()
@@ -297,50 +331,66 @@ class VolumeUnlockService : Service() {
         }
     }
 
-    private fun registerScreenReceiver() {
-        screenReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    Intent.ACTION_SCREEN_OFF -> {
-                        try {
-                            mediaSession?.let {
-                                it.isActive = false
-                                it.isActive = true
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                    Intent.ACTION_SCREEN_ON -> {
-                        try {
-                            mediaSession?.isActive = false
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_OFF)
-            addAction(Intent.ACTION_SCREEN_ON)
-        }
-        registerReceiver(screenReceiver, filter)
-    }
-
-    private fun unregisterScreenReceiver() {
-        screenReceiver?.let {
-            try {
-                unregisterReceiver(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        screenReceiver = null
-    }
-
     override fun onDestroy() {
         stopForegroundService()
         super.onDestroy()
+    }
+
+    // Inner class to handle silent loop playback using AudioTrack
+    private class SilentAudioPlayer {
+        private var audioTrack: AudioTrack? = null
+        private var isPlaying = false
+        private var thread: Thread? = null
+
+        fun start() {
+            if (isPlaying) return
+            isPlaying = true
+            
+            thread = Thread {
+                try {
+                    val sampleRate = 44100
+                    val minBufferSize = AudioTrack.getMinBufferSize(
+                        sampleRate,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT
+                    )
+                    
+                    audioTrack = AudioTrack(
+                        AudioManager.STREAM_MUSIC,
+                        sampleRate,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        minBufferSize,
+                        AudioTrack.MODE_STREAM
+                    )
+                    
+                    audioTrack?.play()
+                    
+                    val buffer = ShortArray(minBufferSize) // Filled with 0s (silence)
+                    while (isPlaying) {
+                        val track = audioTrack ?: break
+                        val written = track.write(buffer, 0, buffer.size)
+                        if (written <= 0) {
+                            Thread.sleep(50)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            thread?.start()
+        }
+
+        fun stop() {
+            isPlaying = false
+            try {
+                audioTrack?.stop()
+                audioTrack?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            audioTrack = null
+            thread = null
+        }
     }
 }
