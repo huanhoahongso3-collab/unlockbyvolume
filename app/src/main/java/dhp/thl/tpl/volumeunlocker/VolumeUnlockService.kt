@@ -30,6 +30,7 @@ class VolumeUnlockService : Service() {
     private var volumeObserver: ContentObserver? = null
     private var volumeReceiver: BroadcastReceiver? = null
     private var mediaSession: MediaSessionCompat? = null
+    private var screenReceiver: BroadcastReceiver? = null
     
     private var lastWakeTime = 0L
     private var isServiceRunning = false
@@ -79,11 +80,15 @@ class VolumeUnlockService : Service() {
 
         // Register BroadcastReceiver for volume changes
         registerVolumeReceiver()
+
+        // Register BroadcastReceiver for screen states
+        registerScreenReceiver()
     }
 
     private fun stopForegroundService() {
         isServiceRunning = false
         
+        unregisterScreenReceiver()
         unregisterVolumeObserver()
         unregisterVolumeReceiver()
         releaseMediaSession()
@@ -290,6 +295,48 @@ class VolumeUnlockService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun registerScreenReceiver() {
+        screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        try {
+                            mediaSession?.let {
+                                it.isActive = false
+                                it.isActive = true
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    Intent.ACTION_SCREEN_ON -> {
+                        try {
+                            mediaSession?.isActive = false
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        registerReceiver(screenReceiver, filter)
+    }
+
+    private fun unregisterScreenReceiver() {
+        screenReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        screenReceiver = null
     }
 
     override fun onDestroy() {
