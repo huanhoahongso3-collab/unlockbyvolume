@@ -27,11 +27,11 @@ class WakeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // Delay finish by 1 second to ensure system registers screen-on event and screen lights up
+        // Delay finish by 150ms to ensure system registers screen-on event, but finishes before user unlocks
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFinishing) {
                 finish()
             }
-        }, 1000)
+        }, 150)
     }
 }
