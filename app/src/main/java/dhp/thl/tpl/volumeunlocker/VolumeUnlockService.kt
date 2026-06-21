@@ -279,7 +279,43 @@ class VolumeUnlockService : Service() {
                          Intent.FLAG_ACTIVITY_CLEAR_TASK or 
                          Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
-            startActivity(intent)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 
+                1, 
+                intent, 
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val wakeChannelId = "VolumeWakeChannel"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val manager = getSystemService(NotificationManager::class.java)
+                if (manager.getNotificationChannel(wakeChannelId) == null) {
+                    val channel = NotificationChannel(
+                        wakeChannelId,
+                        "Volume Wake Events",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    }
+                    manager.createNotificationChannel(channel)
+                }
+            }
+
+            val notification = NotificationCompat.Builder(this, wakeChannelId)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle("Bật màn hình...")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(pendingIntent, true)
+                .build()
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(9913, notification)
+
+            // Cancel the notification immediately after 1 second to keep the tray clean
+            Handler(Looper.getMainLooper()).postDelayed({
+                notificationManager.cancel(9913)
+            }, 1000)
         } catch (e: Exception) {
             e.printStackTrace()
         }
