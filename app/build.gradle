@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.unlockbyvolume'
+    namespace 'dhp.thl.tpl.volumeunlocker'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.unlockbyvolume"
+        applicationId "dhp.thl.tpl.volumeunlocker"
         minSdk 26
         targetSdk 33
         versionCode 1

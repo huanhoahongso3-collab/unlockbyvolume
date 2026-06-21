@@ -1,4 +1,4 @@
-package com.unlockbyvolume
+package dhp.thl.tpl.volumeunlocker
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,13 +19,17 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
+import androidx.media.VolumeProviderCompat
 
 class VolumeUnlockService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var volumeObserver: ContentObserver? = null
     private var volumeReceiver: BroadcastReceiver? = null
+    private var mediaSession: MediaSessionCompat? = null
     
     private var lastWakeTime = 0L
     private var isServiceRunning = false
@@ -67,7 +71,10 @@ class VolumeUnlockService : Service() {
             acquire()
         }
 
-        // Register ContentObserver for volume settings
+        // Setup MediaSession for when no music is playing
+        setupMediaSession()
+
+        // Register ContentObserver for volume settings (to catch changes when other music is playing)
         registerVolumeObserver()
 
         // Register BroadcastReceiver for volume changes
@@ -79,6 +86,7 @@ class VolumeUnlockService : Service() {
         
         unregisterVolumeObserver()
         unregisterVolumeReceiver()
+        releaseMediaSession()
 
         wakeLock?.let {
             if (it.isHeld) {
@@ -89,6 +97,52 @@ class VolumeUnlockService : Service() {
 
         stopForeground(true)
         stopSelf()
+    }
+
+    private fun setupMediaSession() {
+        try {
+            mediaSession = MediaSessionCompat(this, "VolumeUnlockSession").apply {
+                setFlags(
+                    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or 
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+                )
+
+                val state = PlaybackStateCompat.Builder()
+                    .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                    .setState(PlaybackStateCompat.STATE_PLAYING, 0, 1.0f)
+                    .build()
+                setPlaybackState(state)
+
+                // Setup remote volume provider to intercept keys when no other media is active
+                val volumeProvider = object : VolumeProviderCompat(
+                    VOLUME_CONTROL_RELATIVE, 
+                    100, 
+                    50
+                ) {
+                    override fun onAdjustVolume(direction: Int) {
+                        // Intercept volume keys and change volume programmatically
+                        adjustSystemVolume(direction)
+                        handleVolumeChangeAttempt()
+                    }
+                }
+                setPlaybackToRemote(volumeProvider)
+                isActive = true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun releaseMediaSession() {
+        mediaSession?.let {
+            try {
+                it.isActive = false
+                it.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        mediaSession = null
     }
 
     private fun registerVolumeObserver() {
@@ -136,6 +190,29 @@ class VolumeUnlockService : Service() {
             }
         }
         volumeReceiver = null
+    }
+
+    private fun adjustSystemVolume(direction: Int) {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val adjustDir = if (direction > 0) {
+                AudioManager.ADJUST_RAISE
+            } else if (direction < 0) {
+                AudioManager.ADJUST_LOWER
+            } else {
+                0
+            }
+
+            if (adjustDir != 0) {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    adjustDir,
+                    AudioManager.FLAG_SHOW_UI
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun handleVolumeChangeAttempt() {

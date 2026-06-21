@@ -1,4 +1,4 @@
-package com.unlockbyvolume
+package dhp.thl.tpl.volumeunlocker
 
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context
