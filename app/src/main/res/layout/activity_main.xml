@@ -77,45 +77,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Control Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/card_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Điều khiển dịch vụ"
-                android:textColor="@color/accent"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Kích hoạt Volume Unlock"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchService"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-        </LinearLayout>
-
         <!-- Permissions Card -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -134,57 +95,26 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Device Admin Section -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="16dp">
-
-                <TextView
-                    android:id="@+id/tvDeviceAdminStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Quyền Admin: Chưa cấp"
-                    android:textColor="#C0CCDA"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="8dp" />
-
-                <Button
-                    android:id="@+id/btnDeviceAdmin"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Cấp quyền Device Admin"
-                    android:backgroundTint="@color/primary"
-                    android:textColor="@color/white" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="@color/card_border"
-                android:layout_marginBottom="16dp" />
-
-            <!-- Battery Optimization Section -->
+            <!-- Accessibility Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/tvBatteryStatus"
+                    android:id="@+id/tvAccessibilityStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Tối ưu hóa Pin: Đang bật (Có thể bị ngắt)"
+                    android:text="Quyền Accessibility: Chưa cấp"
                     android:textColor="#C0CCDA"
                     android:textSize="14sp"
                     android:layout_marginBottom="8dp" />
 
                 <Button
-                    android:id="@+id/btnBatteryOptimization"
+                    android:id="@+id/btnAccessibility"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Tắt tối ưu hóa Pin"
+                    android:text="Kích hoạt Accessibility Service"
                     android:backgroundTint="@color/primary"
                     android:textColor="@color/white" />
             </LinearLayout>
@@ -213,14 +143,14 @@
                 android:id="@+id/btnLockScreen"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Khóa màn hình ngay (Test)"
+                android:text="Khóa màn hình ngay"
                 android:backgroundTint="#FF5252"
                 android:textColor="@color/white" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Bấm nút trên để tắt màn hình bằng Device Admin, sau đó bấm nút âm lượng để kiểm tra tính năng bật màn hình."
+                android:text="Bấm nút trên để khóa màn hình nhanh. Khóa màn hình qua Accessibility giữ nguyên tính năng mở khóa bằng vân tay hoặc khuôn mặt."
                 android:textColor="#8F9CAE"
                 android:textSize="12sp"
                 android:layout_marginTop="8dp"

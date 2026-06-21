@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Volume Unlocker</string>
+    <string name="accessibility_service_description">Dịch vụ hỗ trợ bật màn hình bằng phím âm lượng khi màn hình tắt và khóa màn hình bằng một chạm mà không mất vân tay.</string>
+</resources>
