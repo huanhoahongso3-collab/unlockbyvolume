@@ -38,6 +38,26 @@ class VolumeUnlockService : Service() {
     
     private var lastWakeTime = 0L
     private var isServiceRunning = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var isSilencePlaying = false
+
+    private val checkMusicRunnable = object : Runnable {
+        override fun run() {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!pm.isInteractive) {
+                if (audioManager.isMusicActive) {
+                    if (isSilencePlaying) {
+                        abandonAudioFocus()
+                    }
+                } else {
+                    if (!isSilencePlaying) {
+                        requestAudioFocus()
+                    }
+                }
+                handler.postDelayed(this, 2000)
+            }
+        }
+    }
 
     companion object {
         private const val NOTIFICATION_ID = 9912
@@ -50,11 +70,13 @@ class VolumeUnlockService : Service() {
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 startSilence()
+                isSilencePlaying = true
             }
             AudioManager.AUDIOFOCUS_LOSS, 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 stopSilence()
+                isSilencePlaying = false
             }
         }
     }
@@ -102,20 +124,21 @@ class VolumeUnlockService : Service() {
         // Register BroadcastReceiver for screen states to manage audio focus
         registerScreenReceiver()
 
-        // Request initial audio focus if screen is off
+        // Request initial audio focus if screen is off and no music is playing
         if (!pm.isInteractive) {
-            requestAudioFocus()
+            handler.removeCallbacks(checkMusicRunnable)
+            handler.post(checkMusicRunnable)
         }
     }
 
     private fun stopForegroundService() {
         isServiceRunning = false
         
+        handler.removeCallbacks(checkMusicRunnable)
         unregisterScreenReceiver()
         unregisterVolumeObserver()
         unregisterVolumeReceiver()
         abandonAudioFocus()
-        stopSilence()
 
         wakeLock?.let {
             if (it.isHeld) {
@@ -130,6 +153,8 @@ class VolumeUnlockService : Service() {
 
     private fun requestAudioFocus() {
         try {
+            if (isSilencePlaying) return
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val attributes = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -149,6 +174,7 @@ class VolumeUnlockService : Service() {
                 )
             }
             startSilence()
+            isSilencePlaying = true
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -156,12 +182,16 @@ class VolumeUnlockService : Service() {
 
     private fun abandonAudioFocus() {
         try {
+            if (!isSilencePlaying) return
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
             } else {
                 @Suppress("DEPRECATION")
                 audioManager.abandonAudioFocus(audioFocusChangeListener)
             }
+            stopSilence()
+            isSilencePlaying = false
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -227,13 +257,14 @@ class VolumeUnlockService : Service() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
-                        // Request audio focus when screen goes off to enable volume keys
-                        requestAudioFocus()
+                        // Start the music status checker loop
+                        handler.removeCallbacks(checkMusicRunnable)
+                        handler.post(checkMusicRunnable)
                     }
                     Intent.ACTION_SCREEN_ON -> {
-                        // Release focus and stop silence when user is using the phone
+                        // Stop checker and release focus
+                        handler.removeCallbacks(checkMusicRunnable)
                         abandonAudioFocus()
-                        stopSilence()
                     }
                 }
             }
