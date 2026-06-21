@@ -123,6 +123,8 @@ class VolumeUnlockService : Service() {
                         // Intercept volume keys and change volume programmatically
                         adjustSystemVolume(direction)
                         handleVolumeChangeAttempt()
+                        // Reset current volume to 50 so that subsequent adjustments will be registered by the system
+                        currentVolume = 50
                     }
                 }
                 setPlaybackToRemote(volumeProvider)
@@ -224,7 +226,7 @@ class VolumeUnlockService : Service() {
 
     private fun triggerWake() {
         val now = System.currentTimeMillis()
-        if (now - lastWakeTime > 1500) { // Debounce wakes
+        if (now - lastWakeTime > 500) { // Debounce wakes
             lastWakeTime = now
             wakeScreen()
             vibrateFeedback()
@@ -235,8 +237,8 @@ class VolumeUnlockService : Service() {
         try {
             val intent = Intent(this, WakeActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
-                         Intent.FLAG_ACTIVITY_CLEAR_TOP or 
-                         Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                         Intent.FLAG_ACTIVITY_CLEAR_TASK or 
+                         Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
             startActivity(intent)
         } catch (e: Exception) {
