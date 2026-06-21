@@ -233,16 +233,12 @@ class VolumeUnlockService : Service() {
 
     private fun wakeScreen() {
         try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            @Suppress("DEPRECATION")
-            val screenWakeLock = powerManager.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or 
-                PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                PowerManager.ON_AFTER_RELEASE,
-                "VolumeUnlock::ScreenWakeLock"
-            )
-            screenWakeLock.acquire(1000L)
-            screenWakeLock.release()
+            val intent = Intent(this, WakeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                         Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                         Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
         } catch (e: Exception) {
             e.printStackTrace()
         }

@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId "dhp.thl.tpl.volumeunlocker"
         minSdk 26
-        targetSdk 33
+        targetSdk 28
         versionCode 1
         versionName "1.0"
 
